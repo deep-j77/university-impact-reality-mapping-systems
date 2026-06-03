@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>University Impact & Reality Mapping System</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header>
+    <h1>University Impact & Reality Mapping System</h1>
+    <p>Behavior-Driven Academic Insight Dashboard</p>
+</header>
+
+<section class="summary">
+    <div class="card red">
+        <h2>Burnout Risk</h2>
+        <span id="burnout">0</span>
+    </div>
+    <div class="card orange">
+        <h2>Learning Gaps</h2>
+        <span id="learning">0</span>
+    </div>
+    <div class="card yellow">
+        <h2>Outcome Mismatch</h2>
+        <span id="outcome">0</span>
+    </div>
+    <div class="card purple">
+        <h2>Policy Mismatch</h2>
+        <span id="policy">0</span>
+    </div>
+</section>
+
+<section class="table-section">
+    <h2>Student Behavioral Analysis</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>University</th>
+                <th>Semester</th>
+                <th>CGPA</th>
+                <th>Skills</th>
+                <th>Triggers</th>
+                <th>Report</th>
+            </tr>
+        </thead>
+        <tbody id="student-table"></tbody>
+    </table>
+</section>
+
+<script src="script.js"></script>
+</body>
+</html>
