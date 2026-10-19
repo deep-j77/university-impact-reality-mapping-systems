@@ -1,0 +1,9 @@
+{
+  "attendance_burnout_pct": 75.0,
+  "late_missed_ratio_burnout": 0.35,
+  "marks_learning_gap": 50.0,
+  "attendance_ok_for_gap": 70.0,
+  "cgpa_outcome_mismatch": 8.45,
+  "attendance_good_for_mismatch": 85.0,
+  "cgpa_placement_policy": 6.5
+}
