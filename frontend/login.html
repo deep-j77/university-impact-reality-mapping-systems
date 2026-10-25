@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Login — University Impact System</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 0; }
+    .card { width: 360px; margin: 80px auto; background: white; padding: 25px;
+            border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    h2 { text-align: center; margin-bottom: 8px; }
+    p.sub { text-align: center; color: #777; font-size: 13px; margin-bottom: 20px; }
+    label { font-size: 14px; font-weight: 500; }
+    input { width: 100%; box-sizing: border-box; padding: 8px; margin: 6px 0 15px; border: 1px solid #ccc;
+            border-radius: 4px; }
+    button { width: 100%; padding: 10px; background: #2c3e50; color: white;
+             border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
+    button:hover { background: #1a252f; }
+    .link { text-align: center; margin-top: 12px; font-size: 14px; cursor: pointer; color: #2c7be5; }
+    .error { color: #e74c3c; text-align: center; margin-top: 10px; min-height: 18px; font-size: 13px; }
+    .seed-hint { margin-top: 18px; padding: 12px; background: #f8f9fa; border-radius: 6px;
+                 font-size: 12px; color: #666; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>University Impact System</h2>
+    <p class="sub">AI-Powered Student Early Warning &amp; Analytics Platform</p>
+
+    <label>Email</label>
+    <input id="email" placeholder="you@example.com">
+
+    <label>Password</label>
+    <input id="password" type="password" placeholder="Enter password">
+
+    <button onclick="login()">Log in</button>
+
+    <div class="link" onclick="window.location.href='./signup.html'">New student? Sign up</div>
+    <p id="msg" class="error"></p>
+
+    <div class="seed-hint">
+      <b>Seeded demo accounts:</b><br>
+      admin@legacy.import / admin123 (Admin)<br>
+      faculty1@demo.import / faculty123 (Faculty)<br>
+      s001@legacy.import ... s015@legacy.import / student123 (Student)
+    </div>
+  </div>
+
+<script src="api.js"></script>
+<script>
+async function login() {
+  const msg = document.getElementById("msg");
+  msg.innerText = "";
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  if (!email || !password) {
+    msg.innerText = "Please enter both email and password.";
+    return;
+  }
+
+  try {
+    const data = await api("/auth/login", { 
+      method: "POST", 
+      body: { email, password }, 
+      auth: false 
+    });
+    
+    console.log("Login success response:", data);
+
+    const token = data.token || data.access_token;
+    if (!token) {
+      throw new Error("No token returned by server.");
+    }
+
+    Auth.setSession(token, data.user);
+
+    const destMap = {
+      ADMIN: "./dashboard-admin.html",
+      FACULTY: "./dashboard-faculty.html",
+      STUDENT: "./dashboard-student.html"
+    };
+
+    const targetUrl = destMap[data.user && data.user.role] || "./dashboard-student.html";
+    window.location.href = targetUrl;
+  } catch (e) {
+    console.error("Login failed:", e);
+    msg.innerText = e.message || "Invalid credentials";
+  }
+}
+
+document.getElementById("password").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") login();
+});
+</script>
+</body>
+</html>

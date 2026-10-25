@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>University Impact System</title>
+</head>
+<body>
+<script src="api.js"></script>
+<script>
+  const user = Auth.getUser();
+  const token = Auth.getToken();
+  if (!token || !user) {
+    window.location.href = "login.html";
+  } else {
+    const dest = { ADMIN: "dashboard-admin.html", FACULTY: "dashboard-faculty.html",
+                    STUDENT: "dashboard-student.html" }[user.role] || "login.html";
+    window.location.href = dest;
+  }
+</script>
+</body>
+</html>

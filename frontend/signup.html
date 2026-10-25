@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Sign Up — University Impact System</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; background: #f0f2f5; }
+    .card { width: 380px; margin: 60px auto; background: white; padding: 25px;
+            border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    h2 { text-align: center; margin-bottom: 20px; }
+    label { font-size: 14px; }
+    input, select { width: 100%; padding: 8px; margin: 6px 0 15px; border: 1px solid #ccc;
+                    border-radius: 4px; }
+    button { width: 100%; padding: 10px; background: #2c3e50; color: white;
+             border: none; border-radius: 4px; cursor: pointer; font-size: 15px; }
+    button:hover { background: #1a252f; }
+    .link { text-align: center; margin-top: 10px; font-size: 14px; cursor: pointer; color: #2c7be5; }
+    .error { color: #e74c3c; text-align: center; margin-top: 10px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Student Sign Up</h2>
+
+    <label>Full name</label>
+    <input id="name" placeholder="Jane Doe">
+
+    <label>Student ID</label>
+    <input id="student_id" placeholder="e.g. S016">
+
+    <label>Email</label>
+    <input id="email" placeholder="you@example.com">
+
+    <label>Password</label>
+    <input id="password" type="password" placeholder="Choose a password">
+
+    <label>Department / Cohort</label>
+    <input id="department" placeholder="e.g. UNI_A">
+
+    <label>Semester</label>
+    <input id="semester" type="number" min="1" max="12" placeholder="e.g. 3">
+
+    <button onclick="signup()">Create account</button>
+    <div class="link" onclick="window.location.href='login.html'">Already have an account? Log in</div>
+    <p id="msg" class="error"></p>
+  </div>
+
+<script src="api.js"></script>
+<script>
+async function signup() {
+  const msg = document.getElementById("msg");
+  msg.innerText = "";
+
+  const body = {
+    name: document.getElementById("name").value.trim(),
+    student_id: document.getElementById("student_id").value.trim(),
+    email: document.getElementById("email").value.trim(),
+    password: document.getElementById("password").value,
+    department: document.getElementById("department").value.trim(),
+    semester: document.getElementById("semester").value,
+  };
+
+  if (Object.values(body).some(v => !v)) {
+    msg.innerText = "Please fill in every field.";
+    return;
+  }
+
+  try {
+    const data = await api("/auth/register", { method: "POST", body, auth: false });
+    Auth.setSession(data.token, data.user);
+    window.location.href = "dashboard-student.html";
+  } catch (e) {
+    msg.innerText = e.message || "Sign up failed";
+  }
+}
+</script>
+</body>
+</html>

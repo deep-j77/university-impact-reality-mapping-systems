@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Dashboard — University Impact System</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="brand">University Impact System — Admin</div>
+  <div class="navlinks">
+    <span id="who"></span>
+    <button class="logout" onclick="logout()">Log out</button>
+  </div>
+</div>
+
+<header>
+  <h1>Administrator Overview</h1>
+  <p>Org-wide risk signals, department stats, and threshold tuning</p>
+</header>
+
+<section class="summary" id="summary-cards">
+  <div class="card red"><h2>Burnout Risk</h2><span id="burnout">–</span></div>
+  <div class="card orange"><h2>Learning Gaps</h2><span id="learning">–</span></div>
+  <div class="card yellow"><h2>Outcome Mismatch</h2><span id="outcome">–</span></div>
+  <div class="card purple"><h2>Policy Mismatch</h2><span id="policy">–</span></div>
+</section>
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Risk Level Distribution (ML model)</h3>
+    <canvas id="riskChart" height="220"></canvas>
+  </div>
+  <div class="panel">
+    <h3>Average CGPA by Department</h3>
+    <canvas id="deptChart" height="220"></canvas>
+  </div>
+</section>
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Trigger Thresholds</h3>
+    <div id="thresholds-form" class="thresholds-form"><p class="loading">Loading…</p></div>
+    <button class="action" style="margin-top:14px" onclick="saveThresholds()">Save thresholds</button>
+    <p id="threshold-msg" style="font-size:13px;color:#27ae60;margin-top:8px;"></p>
+  </div>
+
+  <div class="panel">
+    <h3>Model &amp; Data Actions</h3>
+    <p style="font-size:13px;color:#666;margin-bottom:12px;">
+      Retrain the ML risk model on the latest data in the database
+      (see README for why labels are derived from the rule engine).
+    </p>
+    <button class="action" onclick="retrainModel()">Retrain risk model</button>
+    <p id="retrain-msg" style="font-size:13px;color:#27ae60;margin-top:8px;"></p>
+
+    <h3 style="margin-top:22px;">Provision staff account</h3>
+    <div class="thresholds-form">
+      <label>Name <input id="staff-name"></label>
+      <label>Email <input id="staff-email"></label>
+      <label>Password <input id="staff-password" type="password"></label>
+      <label>Role
+        <select id="staff-role" style="width:100%;padding:6px;margin-top:4px;">
+          <option value="FACULTY">FACULTY</option>
+          <option value="ADMIN">ADMIN</option>
+        </select>
+      </label>
+      <label id="employee-id-label">Employee ID <input id="staff-employee-id"></label>
+      <label id="staff-dept-label">Department <input id="staff-department"></label>
+    </div>
+    <button class="action" style="margin-top:10px" onclick="createStaff()">Create account</button>
+    <p id="staff-msg" style="font-size:13px;color:#27ae60;margin-top:8px;"></p>
+  </div>
+</section>
+
+
+<section class="panel" id="export-panel" style="margin-top:20px;">
+  <h3>Export Data</h3>
+  <p style="font-size:13px;color:#666;margin-bottom:12px;">
+    Download roster, risk, and department data as a spreadsheet — for
+    reporting to university administration or further analysis in Excel/Sheets.
+  </p>
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+    <span style="font-size:13px;color:#444;min-width:150px;">All students (roster + risk)</span>
+    <button class="action secondary" onclick="exportData('/export/students?format=csv', 'students_export.csv')">CSV</button>
+    <button class="action secondary" onclick="exportData('/export/students?format=xlsx', 'students_export.xlsx')">Excel</button>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px;">
+    <span style="font-size:13px;color:#444;min-width:150px;">At-risk students only</span>
+    <button class="action secondary" onclick="exportData('/export/at-risk?format=csv', 'at_risk_students_export.csv')">CSV</button>
+    <button class="action secondary" onclick="exportData('/export/at-risk?format=xlsx', 'at_risk_students_export.xlsx')">Excel</button>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px;">
+    <span style="font-size:13px;color:#444;min-width:150px;">Full analytics workbook</span>
+    <button class="action" onclick="exportData('/export/analytics?format=xlsx', 'analytics_export.xlsx')">Download (.xlsx)</button>
+    <span style="font-size:12px;color:#999;">Roster + at-risk + departments + triggers, one file, multiple sheets</span>
+  </div>
+  <p id="export-msg" style="font-size:13px;margin-top:10px;"></p>
+</section>
+
+<section class="table-section">
+  <h2>All Students — Triggers</h2>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Department</th><th>Semester</th><th>Triggers</th><th>Report</th></tr>
+    </thead>
+    <tbody id="student-table"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+  </table>
+</section>
+
+<script src="api.js"></script>
+<script>
+const user = Auth.getUser();
+document.getElementById("who").innerText = user ? `${user.name} (Admin)` : "";
+
+let riskChartInstance, deptChartInstance;
+
+async function loadSummary() {
+  const summary = await api("/students/summary");
+  burnout.innerText = summary.BURNOUT_RISK;
+  learning.innerText = summary.LEARNING_GAP;
+  outcome.innerText = summary.OUTCOME_MISMATCH;
+  policy.innerText = summary.PLACEMENT_POLICY_MISMATCH;
+}
+
+async function loadDashboard() {
+  const d = await api("/dashboard/admin");
+
+  const riskCtx = document.getElementById("riskChart");
+  const riskData = d.risk_level_distribution;
+  if (riskChartInstance) riskChartInstance.destroy();
+  riskChartInstance = new Chart(riskCtx, {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(riskData),
+      datasets: [{ data: Object.values(riskData),
+        backgroundColor: ["#27ae60", "#f39c12", "#e67e22", "#e74c3c", "#95a5a6"] }],
+    },
+  });
+
+  const deptCtx = document.getElementById("deptChart");
+  if (deptChartInstance) deptChartInstance.destroy();
+  deptChartInstance = new Chart(deptCtx, {
+    type: "bar",
+    data: {
+      labels: d.department_stats.map(s => s.department),
+      datasets: [{ label: "Avg CGPA", data: d.department_stats.map(s => s.avg_cgpa),
+        backgroundColor: "#2c7be5" }],
+    },
+    options: { scales: { y: { beginAtZero: true, max: 10 } } },
+  });
+
+  renderThresholds(d.thresholds);
+}
+
+function renderThresholds(t) {
+  const container = document.getElementById("thresholds-form");
+  container.innerHTML = "";
+  for (const [key, value] of Object.entries(t)) {
+    const label = document.createElement("label");
+    label.innerHTML = `${key.replace(/_/g, " ")}`;
+    const input = document.createElement("input");
+    input.type = "number"; input.step = "0.01"; input.value = value; input.dataset.key = key;
+    label.appendChild(input);
+    container.appendChild(label);
+  }
+}
+
+async function saveThresholds() {
+  const inputs = document.querySelectorAll("#thresholds-form input");
+  const payload = {};
+  inputs.forEach(i => payload[i.dataset.key] = parseFloat(i.value));
+  await api("/admin/thresholds", { method: "PUT", body: payload });
+  document.getElementById("threshold-msg").innerText = "Saved. Reloading data…";
+  await loadSummary();
+  await loadDashboard();
+  await loadStudents();
+  setTimeout(() => document.getElementById("threshold-msg").innerText = "", 3000);
+}
+
+async function retrainModel() {
+  const msg = document.getElementById("retrain-msg");
+  msg.style.color = "#27ae60";
+  msg.innerText = "Training…";
+  try {
+    const res = await api("/risk/retrain", { method: "POST" });
+    msg.innerText = `Trained on ${res.n_samples} records.`;
+  } catch (e) {
+    msg.style.color = "#e74c3c";
+    msg.innerText = e.message;
+  }
+}
+
+document.getElementById("staff-role").addEventListener("change", (e) => {
+  const isFaculty = e.target.value === "FACULTY";
+  document.getElementById("employee-id-label").style.display = isFaculty ? "block" : "none";
+  document.getElementById("staff-dept-label").style.display = isFaculty ? "block" : "none";
+});
+
+async function createStaff() {
+  const msg = document.getElementById("staff-msg");
+  const body = {
+    name: document.getElementById("staff-name").value.trim(),
+    email: document.getElementById("staff-email").value.trim(),
+    password: document.getElementById("staff-password").value,
+    role: document.getElementById("staff-role").value,
+    employee_id: document.getElementById("staff-employee-id").value.trim(),
+    department: document.getElementById("staff-department").value.trim(),
+  };
+  try {
+    await api("/admin/users", { method: "POST", body });
+    msg.style.color = "#27ae60";
+    msg.innerText = "Account created.";
+  } catch (e) {
+    msg.style.color = "#e74c3c";
+    msg.innerText = e.message;
+  }
+}
+
+async function loadStudents() {
+  const students = await api("/students/triggers");
+  const table = document.getElementById("student-table");
+  table.innerHTML = "";
+  if (!students.length) {
+    table.innerHTML = `<tr><td colspan="5" class="empty">No students found.</td></tr>`;
+    return;
+  }
+  students.forEach(s => {
+    const row = document.createElement("tr");
+    const triggerBadges = s.triggers.length
+      ? s.triggers.map(t => `<span class="trigger ${t}">${t.replace(/_/g, " ")}</span>`).join(" ")
+      : "<span style='color:#999'>None</span>";
+    row.innerHTML = `
+      <td>${s.student_id}</td>
+      <td>${s.department}</td>
+      <td>${s.semester}</td>
+      <td>${triggerBadges}</td>
+      <td><a href="#" onclick="downloadReport('${s.student_id}'); return false;">Download PDF</a></td>
+    `;
+    table.appendChild(row);
+  });
+}
+
+// Phase 9 — data export (CSV/Excel), reuses the downloadFile() helper in
+// api.js which already handles auth headers + blob-to-download.
+async function exportData(path, filename) {
+  const msg = document.getElementById("export-msg");
+  msg.style.color = "#666";
+  msg.innerText = "Preparing download…";
+  try {
+    await downloadFile(path, filename);
+    msg.style.color = "#27ae60";
+    msg.innerText = `Downloaded ${filename}`;
+  } catch (e) {
+    msg.style.color = "#e74c3c";
+    msg.innerText = "Export failed: " + e.message;
+  }
+}
+
+async function downloadReport(studentId) {
+  const token = Auth.getToken();
+  await detectApiBase();
+  const res = await fetch(`${API_BASE}/reports/${studentId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) { alert("Could not generate report."); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${studentId}_report.pdf`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+(async function init() {
+  try {
+    await loadSummary();
+    await loadDashboard();
+    await loadStudents();
+  } catch (e) {
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>

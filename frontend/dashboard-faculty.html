@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Faculty Dashboard — University Impact System</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="brand">University Impact System — Faculty</div>
+  <div class="navlinks">
+    <span id="who"></span>
+    <button class="logout" onclick="logout()">Log out</button>
+  </div>
+</div>
+
+<header>
+  <h1>Faculty Overview &amp; Management</h1>
+  <p>Student Academic Records, Risk Analysis &amp; Data Management</p>
+</header>
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Average Marks by Subject</h3>
+    <canvas id="marksChart" height="220"></canvas>
+  </div>
+  <div class="panel">
+    <h3>At-Risk Students (HIGH / CRITICAL)</h3>
+    <div id="at-risk-list"><p class="loading">Loading…</p></div>
+  </div>
+</section>
+
+<!-- STUDENT DATA MANAGEMENT SECTION -->
+<section class="table-section" id="student-management-section" style="margin-top:25px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+    <h2>Student Data Management</h2>
+    <button class="action success" onclick="openAddModal()">+ Add Student</button>
+  </div>
+
+  <!-- Search & Filter Controls -->
+  <div class="filter-bar">
+    <div class="filter-inputs">
+      <input type="text" id="search-input" class="search-input" placeholder="Search by student ID, name or email..." oninput="filterStudentsTable()">
+      
+      <select id="filter-branch" class="filter-select" onchange="filterStudentsTable()">
+        <option value="">All Branches</option>
+      </select>
+
+      <select id="filter-year" class="filter-select" onchange="filterStudentsTable()">
+        <option value="">All Years</option>
+        <option value="1">Year 1</option>
+        <option value="2">Year 2</option>
+        <option value="3">Year 3</option>
+        <option value="4">Year 4</option>
+      </select>
+
+      <select id="filter-semester" class="filter-select" onchange="filterStudentsTable()">
+        <option value="">All Semesters</option>
+        <option value="1">Sem 1</option>
+        <option value="2">Sem 2</option>
+        <option value="3">Sem 3</option>
+        <option value="4">Sem 4</option>
+        <option value="5">Sem 5</option>
+        <option value="6">Sem 6</option>
+        <option value="7">Sem 7</option>
+        <option value="8">Sem 8</option>
+      </select>
+
+      <select id="filter-risk" class="filter-select" onchange="filterStudentsTable()">
+        <option value="">All Risk Statuses</option>
+        <option value="LOW">Low Risk</option>
+        <option value="MEDIUM">Medium Risk</option>
+        <option value="HIGH">High Risk</option>
+        <option value="CRITICAL">Critical Risk</option>
+      </select>
+
+      <select id="filter-attendance" class="filter-select" onchange="filterStudentsTable()">
+        <option value="">All Attendance Statuses</option>
+        <option value="Good">Good (≥75%)</option>
+        <option value="Warning">Warning (60-74%)</option>
+        <option value="Critical">Critical (&lt;60%)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Management Student Table -->
+  <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>Student ID</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Branch</th>
+          <th>Year</th>
+          <th>Semester</th>
+          <th>Attendance</th>
+          <th>Marks</th>
+          <th>CGPA</th>
+          <th>Risk Status</th>
+          <th>Last Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="management-student-table">
+        <tr><td colspan="12" class="loading">Loading records…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- LEGACY ACTIONS & EXPORTS -->
+<section class="panel" id="export-panel" style="margin-top:25px;">
+  <h3>Export Data</h3>
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+    <span style="font-size:13px;color:#444;min-width:150px;">All students (roster + risk)</span>
+    <button class="action secondary" onclick="exportData('/export/students?format=csv', 'students_export.csv')">CSV</button>
+    <button class="action secondary" onclick="exportData('/export/students?format=xlsx', 'students_export.xlsx')">Excel</button>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px;">
+    <span style="font-size:13px;color:#444;min-width:150px;">At-risk students only</span>
+    <button class="action secondary" onclick="exportData('/export/at-risk?format=csv', 'at_risk_students_export.csv')">CSV</button>
+    <button class="action secondary" onclick="exportData('/export/at-risk?format=xlsx', 'at_risk_students_export.xlsx')">Excel</button>
+  </div>
+  <p id="export-msg" style="font-size:13px;margin-top:10px;"></p>
+</section>
+
+<section class="table-section" style="margin-top:25px;">
+  <h2>Risk Triggers &amp; AI Analysis</h2>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Department</th><th>Semester</th><th>Triggers</th><th>Actions</th></tr>
+    </thead>
+    <tbody id="student-triggers-table"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+  </table>
+</section>
+
+<section class="panel" id="explain-panel" style="display:none; margin-top:20px;">
+  <h3 id="explain-title">AI Explanation</h3>
+  <p id="explain-text"></p>
+  <h4 style="margin-top:14px;">Recommendations</h4>
+  <p id="explain-recs" style="white-space:pre-line;"></p>
+</section>
+
+<!-- ADD / EDIT STUDENT MODAL -->
+<div id="student-modal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Add New Student</h3>
+      <button class="close-btn" onclick="closeStudentModal()">&times;</button>
+    </div>
+    <form id="student-form" onsubmit="saveStudentForm(event)">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Student ID *</label>
+          <input type="text" id="form-student-id" required placeholder="e.g. S016">
+        </div>
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" id="form-name" required placeholder="e.g. Alex Johnson">
+        </div>
+        <div class="form-group">
+          <label>Email *</label>
+          <input type="email" id="form-email" required placeholder="e.g. alex@university.edu">
+        </div>
+        <div class="form-group">
+          <label>Branch / Department *</label>
+          <input type="text" id="form-branch" required placeholder="e.g. Computer Science">
+        </div>
+        <div class="form-group">
+          <label>Year *</label>
+          <select id="form-year" required>
+            <option value="1">Year 1</option>
+            <option value="2">Year 2</option>
+            <option value="3">Year 3</option>
+            <option value="4">Year 4</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Semester *</label>
+          <select id="form-semester" required>
+            <option value="1">Semester 1</option>
+            <option value="2">Semester 2</option>
+            <option value="3">Semester 3</option>
+            <option value="4">Semester 4</option>
+            <option value="5">Semester 5</option>
+            <option value="6">Semester 6</option>
+            <option value="7">Semester 7</option>
+            <option value="8">Semester 8</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Section</label>
+          <input type="text" id="form-section" placeholder="e.g. A">
+        </div>
+        <div class="form-group">
+          <label>Attendance % (0-100) *</label>
+          <input type="number" id="form-attendance" min="0" max="100" step="0.1" required placeholder="e.g. 85.0">
+        </div>
+        <div class="form-group">
+          <label>Internal Marks</label>
+          <input type="number" id="form-internal-marks" min="0" max="30" step="0.1" placeholder="Max 15-30">
+        </div>
+        <div class="form-group">
+          <label>Midterm Marks</label>
+          <input type="number" id="form-midterm-marks" min="0" max="30" step="0.1" placeholder="Max 20-30">
+        </div>
+        <div class="form-group">
+          <label>Assignment Marks</label>
+          <input type="number" id="form-assignment-marks" min="0" max="20" step="0.1" placeholder="Max 15-20">
+        </div>
+        <div class="form-group">
+          <label>Practical Marks</label>
+          <input type="number" id="form-practical-marks" min="0" max="20" step="0.1" placeholder="Max 10-20">
+        </div>
+        <div class="form-group">
+          <label>Endterm Marks</label>
+          <input type="number" id="form-endterm-marks" min="0" max="50" step="0.1" placeholder="Max 40-50">
+        </div>
+        <div class="form-group">
+          <label>CGPA (0.0 - 10.0)</label>
+          <input type="number" id="form-cgpa" min="0" max="10" step="0.01" placeholder="e.g. 8.5">
+        </div>
+        <div class="form-group">
+          <label>Backlogs</label>
+          <input type="number" id="form-backlogs" min="0" step="1" value="0">
+        </div>
+        <div class="form-group">
+          <label>Assignment Completion %</label>
+          <input type="number" id="form-assignment-completion" min="0" max="100" step="1" value="85">
+        </div>
+        <div class="form-group">
+          <label>Participation</label>
+          <select id="form-participation">
+            <option value="Good">Good</option>
+            <option value="Average">Average</option>
+            <option value="Poor">Poor</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="action secondary" onclick="closeStudentModal()">Cancel</button>
+        <button type="submit" class="action success">Save Student</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- DELETE CONFIRMATION MODAL -->
+<div id="delete-modal" class="modal-overlay">
+  <div class="modal" style="max-width:450px;">
+    <div class="modal-header">
+      <h3>Confirm Deletion</h3>
+      <button class="close-btn" onclick="closeDeleteModal()">&times;</button>
+    </div>
+    <p style="font-size:14px; color:#555; margin-bottom:15px;">
+      Are you sure you want to delete this student record?
+    </p>
+    <p id="delete-student-info" style="font-weight:bold; color:#2c3e50; font-size:15px; margin-bottom:20px;"></p>
+    <div class="modal-footer">
+      <button class="action secondary" onclick="closeDeleteModal()">Cancel</button>
+      <button class="action danger" onclick="executeStudentDeletion()">Delete Record</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST NOTIFICATION -->
+<div id="toast" class="toast-msg"></div>
+
+<script src="api.js"></script>
+<script>
+const user = Auth.requireRole(["FACULTY", "ADMIN"]);
+document.getElementById("who").innerText = user ? `${user.name} (Faculty)` : "";
+
+let marksChartInstance;
+let allStudentRecords = [];
+let editingStudentId = null;
+let deletingStudentId = null;
+
+function showToast(message, isError = false) {
+  const toast = document.getElementById("toast");
+  toast.innerText = message;
+  toast.className = `toast-msg ${isError ? 'error' : 'success'}`;
+  toast.style.display = "block";
+  setTimeout(() => { toast.style.display = "none"; }, 3500);
+}
+
+async function loadDashboard() {
+  const d = await api("/dashboard/faculty");
+
+  const ctx = document.getElementById("marksChart");
+  if (marksChartInstance) marksChartInstance.destroy();
+  marksChartInstance = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: Object.keys(d.avg_marks_by_subject),
+      datasets: [{ label: "Avg total marks", data: Object.values(d.avg_marks_by_subject),
+        backgroundColor: "#2c7be5" }],
+    },
+    options: { indexAxis: "y", scales: { x: { beginAtZero: true, max: 100 } } },
+  });
+
+  const list = document.getElementById("at-risk-list");
+  if (!d.at_risk_students.length) {
+    list.innerHTML = `<p class="empty">No HIGH/CRITICAL students right now. Run assessments below.</p>`;
+  } else {
+    list.innerHTML = d.at_risk_students.map(s => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee;">
+        <span>${s.name} (${s.student_id})</span>
+        <span class="risk-badge ${riskBadgeClass(s.risk_level)}">${s.risk_level} · ${s.risk_score.toFixed(2)}</span>
+      </div>`).join("");
+  }
+}
+
+async function fetchFacultyStudents() {
+  try {
+    const res = await getFacultyStudents();
+    if (res.success) {
+      allStudentRecords = res.students;
+      populateBranchFilter();
+      renderManagementTable(allStudentRecords);
+    }
+  } catch (e) {
+    console.error("Error loading faculty students:", e);
+  }
+}
+
+function populateBranchFilter() {
+  const select = document.getElementById("filter-branch");
+  const branches = [...new Set(allStudentRecords.map(s => s.branch).filter(Boolean))];
+  const currentVal = select.value;
+  select.innerHTML = `<option value="">All Branches</option>` +
+    branches.map(b => `<option value="${b}">${b}</option>`).join("");
+  select.value = currentVal;
+}
+
+function renderManagementTable(records) {
+  const table = document.getElementById("management-student-table");
+  if (!records.length) {
+    table.innerHTML = `<tr><td colspan="12" class="empty">No matching student records found.</td></tr>`;
+    return;
+  }
+
+  table.innerHTML = records.map(s => `
+    <tr>
+      <td><strong>${s.student_id}</strong></td>
+      <td>${s.name}</td>
+      <td>${s.email}</td>
+      <td>${s.branch}</td>
+      <td>Year ${s.year}</td>
+      <td>Sem ${s.semester}</td>
+      <td>
+        <span>${s.attendance_percentage}%</span><br>
+        <small style="color:${s.attendance_status==='Good'?'#27ae60':s.attendance_status==='Warning'?'#f39c12':'#e74c3c'}">${s.attendance_status}</small>
+      </td>
+      <td>
+        <strong>${s.total_marks}</strong><br>
+        <small style="color:#777">Int:${s.internal_marks} Mid:${s.midterm_marks}</small>
+      </td>
+      <td>${s.cgpa}</td>
+      <td><span class="risk-badge ${riskBadgeClass(s.risk_status)}">${s.risk_status}</span></td>
+      <td><small style="color:#666">${s.last_updated || 'Just now'}</small></td>
+      <td>
+        <button class="action" onclick="openEditModal('${s.student_id}')">Edit</button>
+        <button class="action danger" onclick="confirmDeleteStudent('${s.student_id}')">Delete</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function filterStudentsTable() {
+  const query = document.getElementById("search-input").value.toLowerCase().trim();
+  const branch = document.getElementById("filter-branch").value;
+  const year = document.getElementById("filter-year").value;
+  const semester = document.getElementById("filter-semester").value;
+  const risk = document.getElementById("filter-risk").value;
+  const attendance = document.getElementById("filter-attendance").value;
+
+  const filtered = allStudentRecords.filter(s => {
+    const matchQuery = !query || 
+      (s.student_id && s.student_id.toLowerCase().includes(query)) ||
+      (s.name && s.name.toLowerCase().includes(query)) ||
+      (s.email && s.email.toLowerCase().includes(query));
+
+    const matchBranch = !branch || s.branch === branch;
+    const matchYear = !year || String(s.year) === year;
+    const matchSemester = !semester || String(s.semester) === semester;
+    const matchRisk = !risk || s.risk_status === risk;
+    const matchAttendance = !attendance || s.attendance_status === attendance;
+
+    return matchQuery && matchBranch && matchYear && matchSemester && matchRisk && matchAttendance;
+  });
+
+  renderManagementTable(filtered);
+}
+
+function openAddModal() {
+  editingStudentId = null;
+  document.getElementById("modal-title").innerText = "Add New Student";
+  document.getElementById("student-form").reset();
+  document.getElementById("form-student-id").disabled = false;
+  document.getElementById("student-modal").classList.add("active");
+}
+
+function openEditModal(studentId) {
+  const s = allStudentRecords.find(item => item.student_id === studentId);
+  if (!s) return;
+
+  editingStudentId = studentId;
+  document.getElementById("modal-title").innerText = `Edit Student — ${studentId}`;
+  
+  document.getElementById("form-student-id").value = s.student_id;
+  document.getElementById("form-student-id").disabled = true;
+  document.getElementById("form-name").value = s.name || "";
+  document.getElementById("form-email").value = s.email || "";
+  document.getElementById("form-branch").value = s.branch || "";
+  document.getElementById("form-year").value = s.year || 1;
+  document.getElementById("form-semester").value = s.semester || 1;
+  document.getElementById("form-section").value = s.section || "A";
+  document.getElementById("form-attendance").value = s.attendance_percentage || 0;
+  document.getElementById("form-internal-marks").value = s.internal_marks || 0;
+  document.getElementById("form-midterm-marks").value = s.midterm_marks || 0;
+  document.getElementById("form-assignment-marks").value = s.assignment_marks || 0;
+  document.getElementById("form-practical-marks").value = s.practical_marks || 0;
+  document.getElementById("form-endterm-marks").value = s.endterm_marks || 0;
+  document.getElementById("form-cgpa").value = s.cgpa || 0;
+  document.getElementById("form-backlogs").value = s.backlogs || 0;
+  document.getElementById("form-assignment-completion").value = s.assignment_completion || 85;
+  document.getElementById("form-participation").value = s.participation || "Good";
+
+  document.getElementById("student-modal").classList.add("active");
+}
+
+function closeStudentModal() {
+  document.getElementById("student-modal").classList.remove("active");
+}
+
+async function saveStudentForm(e) {
+  e.preventDefault();
+
+  const payload = {
+    student_id: document.getElementById("form-student-id").value.trim(),
+    name: document.getElementById("form-name").value.trim(),
+    email: document.getElementById("form-email").value.trim(),
+    branch: document.getElementById("form-branch").value.trim(),
+    year: parseInt(document.getElementById("form-year").value),
+    semester: parseInt(document.getElementById("form-semester").value),
+    section: document.getElementById("form-section").value.trim(),
+    attendance_percentage: parseFloat(document.getElementById("form-attendance").value),
+    internal_marks: parseFloat(document.getElementById("form-internal-marks").value || 0),
+    midterm_marks: parseFloat(document.getElementById("form-midterm-marks").value || 0),
+    assignment_marks: parseFloat(document.getElementById("form-assignment-marks").value || 0),
+    practical_marks: parseFloat(document.getElementById("form-practical-marks").value || 0),
+    endterm_marks: parseFloat(document.getElementById("form-endterm-marks").value || 0),
+    cgpa: parseFloat(document.getElementById("form-cgpa").value || 0),
+    backlogs: parseInt(document.getElementById("form-backlogs").value || 0),
+    assignment_completion: parseFloat(document.getElementById("form-assignment-completion").value || 85),
+    participation: document.getElementById("form-participation").value,
+  };
+
+  try {
+    let res;
+    if (editingStudentId) {
+      res = await updateFacultyStudent(editingStudentId, payload);
+    } else {
+      res = await addFacultyStudent(payload);
+    }
+
+    if (res.success) {
+      showToast(editingStudentId ? "Student data updated successfully." : "Student added successfully.");
+      closeStudentModal();
+      await fetchFacultyStudents();
+      await loadDashboard();
+      await loadStudentsTriggers();
+    } else {
+      showToast(res.message || "Failed to save student record", true);
+    }
+  } catch (err) {
+    showToast(err.message || "An error occurred while saving", true);
+  }
+}
+
+function confirmDeleteStudent(studentId) {
+  const s = allStudentRecords.find(item => item.student_id === studentId);
+  deletingStudentId = studentId;
+  document.getElementById("delete-student-info").innerText = s ? `${s.name} (${s.student_id})` : studentId;
+  document.getElementById("delete-modal").classList.add("active");
+}
+
+function closeDeleteModal() {
+  document.getElementById("delete-modal").classList.remove("active");
+  deletingStudentId = null;
+}
+
+async function executeStudentDeletion() {
+  if (!deletingStudentId) return;
+
+  try {
+    const res = await deleteFacultyStudent(deletingStudentId);
+    if (res.success) {
+      showToast("Student deleted successfully.");
+      closeDeleteModal();
+      await fetchFacultyStudents();
+      await loadDashboard();
+      await loadStudentsTriggers();
+    } else {
+      showToast(res.message || "Failed to delete student", true);
+    }
+  } catch (err) {
+    showToast(err.message || "Error deleting student record", true);
+  }
+}
+
+async function loadStudentsTriggers() {
+  const students = await api("/students/triggers");
+  const table = document.getElementById("student-triggers-table");
+  table.innerHTML = "";
+  students.forEach(s => {
+    const row = document.createElement("tr");
+    const triggerBadges = s.triggers.length
+      ? s.triggers.map(t => `<span class="trigger ${t}">${t.replace(/_/g, " ")}</span>`).join(" ")
+      : "<span style='color:#999'>None</span>";
+    row.innerHTML = `
+      <td>${s.student_id}</td>
+      <td>${s.department}</td>
+      <td>${s.semester}</td>
+      <td>${triggerBadges}</td>
+      <td>
+        <button class="action" onclick="assess('${s.student_id}')">Assess risk (ML)</button>
+        <button class="action secondary" onclick="explain('${s.student_id}')">AI explain</button>
+      </td>
+    `;
+    table.appendChild(row);
+  });
+}
+
+async function exportData(path, filename) {
+  const msg = document.getElementById("export-msg");
+  msg.style.color = "#666";
+  msg.innerText = "Preparing download…";
+  try {
+    await downloadFile(path, filename);
+    msg.style.color = "#27ae60";
+    msg.innerText = `Downloaded ${filename}`;
+  } catch (e) {
+    msg.style.color = "#e74c3c";
+    msg.innerText = "Export failed: " + e.message;
+  }
+}
+
+async function assess(studentId) {
+  try {
+    const res = await api(`/risk/${studentId}/assess`, { method: "POST" });
+    alert(`${studentId}: ${res.risk_level} risk (score ${res.risk_score.toFixed(2)})`);
+    await loadDashboard();
+    await fetchFacultyStudents();
+  } catch (e) {
+    alert("Could not assess: " + e.message);
+  }
+}
+
+async function explain(studentId) {
+  const panel = document.getElementById("explain-panel");
+  const title = document.getElementById("explain-title");
+  const text = document.getElementById("explain-text");
+  const recs = document.getElementById("explain-recs");
+  panel.style.display = "block";
+  title.innerText = `AI Explanation — ${studentId}`;
+  text.innerText = "Loading…";
+  recs.innerText = "";
+  try {
+    const exp = await api(`/ai/${studentId}/explain`, { method: "POST" });
+    text.innerText = exp.explanation + (exp.used_llm ? "" : "  (fallback: AI service unavailable/unconfigured)");
+    const rec = await api(`/ai/${studentId}/recommendations`, { method: "POST" });
+    recs.innerText = rec.recommendations;
+  } catch (e) {
+    text.innerText = "Error: " + e.message + " (run 'Assess risk' first if no assessment exists yet)";
+  }
+  panel.scrollIntoView({ behavior: "smooth" });
+}
+
+(async function init() {
+  try {
+    await loadDashboard();
+    await fetchFacultyStudents();
+    await loadStudentsTriggers();
+  } catch (e) {
+    console.error(e);
+  }
+})();
+</script>
+</body>
+</html>

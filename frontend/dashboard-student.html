@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>My Dashboard — University Impact System</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<div class="navbar">
+  <div class="brand">University Impact System</div>
+  <div class="navlinks">
+    <span id="who"></span>
+    <button type="button" class="logout" onclick="logout()">Log out</button>
+  </div>
+</div>
+
+<header>
+  <h1 id="page-title">My Academic Dashboard</h1>
+  <p>Your attendance, marks, CGPA trend, and risk status</p>
+</header>
+
+<section class="summary" id="summary-cards">
+  <div class="card"><h2>Avg Attendance</h2><span id="m-attendance">–</span></div>
+  <div class="card"><h2>Avg Marks</h2><span id="m-marks">–</span></div>
+  <div class="card"><h2>CGPA</h2><span id="m-cgpa">–</span></div>
+  <div class="card"><h2>Risk Status</h2><span id="m-risk">–</span></div>
+</section>
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>CGPA Trend</h3>
+    <canvas id="cgpaChart" height="220"></canvas>
+  </div>
+  <div class="panel">
+    <h3>Attendance by Subject</h3>
+    <canvas id="attendanceChart" height="220"></canvas>
+  </div>
+</section>
+
+<section class="grid-2">
+  <div class="panel">
+    <h3>Marks by Subject</h3>
+    <canvas id="marksChart" height="220"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>Ask the Academic Assistant</h3>
+    <div class="chat-box">
+      <div class="chat-messages" id="chat-messages" style="max-height: 260px; overflow-y: auto;">
+        <div class="chat-msg bot">Hi! Ask me about your attendance, marks, or risk status.</div>
+      </div>
+      <form id="chat-form" onsubmit="return handleChatSubmit(event)" style="display: flex; gap: 8px; margin-top: 10px;">
+        <input id="chat-input" placeholder="e.g. How is my attendance looking?" autocomplete="off" style="flex: 1; padding: 8px;">
+        <button type="submit" class="action" id="send-btn">Send</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<section class="panel" style="margin-top:20px;">
+  <h3>Download my report</h3>
+  <p style="font-size:13px;color:#666;margin-bottom:10px;">
+    Includes your marks, attendance, performance trend, and latest risk assessment.
+  </p>
+  <button type="button" class="action" onclick="downloadMyReport()">Download PDF</button>
+</section>
+
+<section class="panel" style="margin-top:20px;">
+  <h3>Export my data</h3>
+  <p style="font-size:13px;color:#666;margin-bottom:10px;">
+    Download your performance history, subject-wise marks, attendance, and
+    risk assessment history as a spreadsheet.
+  </p>
+  <button type="button" class="action secondary" onclick="exportMyData('csv')">CSV</button>
+  <button type="button" class="action secondary" onclick="exportMyData('xlsx')">Excel</button>
+  <p id="export-msg" style="font-size:13px;margin-top:8px;"></p>
+</section>
+
+<script src="api.js"></script>
+<script>
+const user = Auth.requireRole(["STUDENT"]);
+if (user) {
+  document.getElementById("who").innerText = user.name || user.email || "Student";
+}
+
+let cgpaChartInstance, attendanceChartInstance, marksChartInstance;
+let studentId = (user && (user.id || user.student_id)) || null;
+let chatHistory = [];
+
+async function loadDashboard() {
+  try {
+    const d = await api("/dashboard/student");
+    if (!d || !d.student) return;
+
+    studentId = d.student.student_id || studentId;
+    document.getElementById("page-title").innerText = `${d.student.name}'s Academic Dashboard`;
+
+    document.getElementById("m-attendance").innerText =
+      d.metrics && d.metrics.avg_attendance != null ? d.metrics.avg_attendance.toFixed(1) + "%" : "–";
+    document.getElementById("m-marks").innerText =
+      d.metrics && d.metrics.avg_marks != null ? d.metrics.avg_marks.toFixed(1) : "–";
+    document.getElementById("m-cgpa").innerText =
+      d.metrics && d.metrics.cgpa != null ? d.metrics.cgpa.toFixed(2) : "–";
+
+    const riskEl = document.getElementById("m-risk");
+    if (d.latest_risk && d.latest_risk.risk_level) {
+      riskEl.innerHTML = `<span class="risk-badge ${riskBadgeClass(d.latest_risk.risk_level)}">${d.latest_risk.risk_level}</span>`;
+    } else {
+      riskEl.innerText = "Not assessed yet";
+    }
+
+    if (typeof Chart === "undefined") {
+      console.warn("Chart.js is still loading or blocked by network.");
+      return;
+    }
+
+    if (d.cgpa_trend && d.cgpa_trend.length > 0) {
+      const cgpaCtx = document.getElementById("cgpaChart");
+      if (cgpaChartInstance) cgpaChartInstance.destroy();
+      cgpaChartInstance = new Chart(cgpaCtx, {
+        type: "line",
+        data: {
+          labels: d.cgpa_trend.map(p => "Sem " + p.semester),
+          datasets: [{ label: "CGPA", data: d.cgpa_trend.map(p => p.cgpa),
+            borderColor: "#2c7be5", backgroundColor: "rgba(44,123,229,0.15)", fill: true, tension: 0.3 }],
+        },
+        options: { scales: { y: { beginAtZero: true, max: 10 } } },
+      });
+    }
+
+    if (d.attendance_by_subject && d.attendance_by_subject.length > 0) {
+      const attCtx = document.getElementById("attendanceChart");
+      if (attendanceChartInstance) attendanceChartInstance.destroy();
+      attendanceChartInstance = new Chart(attCtx, {
+        type: "bar",
+        data: {
+          labels: d.attendance_by_subject.map(a => a.subject),
+          datasets: [{ label: "Attendance %", data: d.attendance_by_subject.map(a => a.percentage),
+            backgroundColor: d.attendance_by_subject.map(a => a.percentage < 75 ? "#e74c3c" : "#27ae60") }],
+        },
+        options: { scales: { y: { beginAtZero: true, max: 100 } } },
+      });
+    }
+
+    if (d.marks_by_subject && d.marks_by_subject.length > 0) {
+      const marksCtx = document.getElementById("marksChart");
+      if (marksChartInstance) marksChartInstance.destroy();
+      marksChartInstance = new Chart(marksCtx, {
+        type: "radar",
+        data: {
+          labels: d.marks_by_subject.map(m => m.subject),
+          datasets: [{ label: "Total marks", data: d.marks_by_subject.map(m => m.total_marks),
+            borderColor: "#9b59b6", backgroundColor: "rgba(155,89,182,0.2)" }],
+        },
+        options: { scales: { r: { beginAtZero: true, max: 100 } } },
+      });
+    }
+  } catch (err) {
+    console.error("Error loading dashboard data:", err);
+  }
+}
+
+function appendChatMsg(role, text) {
+  const box = document.getElementById("chat-messages");
+  if (!box) return;
+  const div = document.createElement("div");
+  div.className = "chat-msg " + (role === "user" ? "user" : "bot");
+  div.innerText = text;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function handleChatSubmit(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  const input = document.getElementById("chat-input");
+  const message = input ? input.value.trim() : "";
+  if (!message) return false;
+
+  input.value = "";
+
+  // 1. User message bubble show karo
+  appendChatMsg("user", message);
+  chatHistory.push({ role: "user", content: message });
+
+  // 2. Loading state add karo
+  const box = document.getElementById("chat-messages");
+  const loadingDiv = document.createElement("div");
+  loadingDiv.className = "chat-msg bot";
+  loadingDiv.id = "chat-loading-msg";
+  loadingDiv.innerText = "Thinking...";
+  box.appendChild(loadingDiv);
+  box.scrollTop = box.scrollHeight;
+
+  const currentTargetId = studentId || "S001";
+
+  try {
+    const res = await api(`/ai/${currentTargetId}/chat`, {
+      method: "POST",
+      body: { message, history: chatHistory }
+    });
+
+    const loader = document.getElementById("chat-loading-msg");
+    if (loader) loader.remove();
+
+    if (res && res.reply) {
+      appendChatMsg("bot", res.reply);
+      chatHistory.push({ role: "assistant", content: res.reply });
+    } else {
+      appendChatMsg("bot", "No reply received from server.");
+    }
+  } catch (err) {
+    console.error("Chat error:", err);
+    const loader = document.getElementById("chat-loading-msg");
+    if (loader) loader.remove();
+    appendChatMsg("bot", "Error: " + (err.message || "Failed to reach AI service"));
+  }
+
+  return false;
+}
+
+async function downloadMyReport() {
+  if (!studentId) {
+    alert("Student data not loaded yet.");
+    return;
+  }
+  const token = Auth.getToken();
+  await detectApiBase();
+  const res = await fetch(`${API_BASE}/reports/${studentId}?include_ai=1`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) { alert("Could not generate report."); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${studentId}_report.pdf`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Phase 9 — data export (CSV/Excel) of the student's own record, reusing
+// the downloadFile() helper in api.js. format=csv only returns the first
+// sheet (Performance) since CSV can't hold multiple tables — Excel is the
+// better choice when a student wants everything in one file.
+async function exportMyData(format) {
+  const msg = document.getElementById("export-msg");
+  if (!studentId) {
+    msg.style.color = "#e74c3c";
+    msg.innerText = "Student data not loaded yet.";
+    return;
+  }
+  msg.style.color = "#666";
+  msg.innerText = "Preparing download…";
+  try {
+    await downloadFile(`/export/student/${studentId}?format=${format}`,
+      `${studentId}_data_export.${format}`);
+    msg.style.color = "#27ae60";
+    msg.innerText = "Downloaded.";
+  } catch (e) {
+    msg.style.color = "#e74c3c";
+    msg.innerText = "Export failed: " + e.message;
+  }
+}
+
+(async function init() {
+  await loadDashboard();
+})();
+</script>
+</body>
+</html>
